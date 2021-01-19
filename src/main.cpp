@@ -11,7 +11,7 @@
 
 
 // Serial library
-#include "../lib/serialib.h"
+#include "../inc/serialib.h"
 #include <unistd.h>
 #include <stdio.h>
 
