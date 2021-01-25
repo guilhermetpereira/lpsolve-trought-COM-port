@@ -1,0 +1,7 @@
+
+*.o
+src/main.o
+src/main.o
+*.exe
+src/main.o
+src/main.exe

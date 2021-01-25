@@ -1,5 +1,5 @@
 IDIR = ../inc
-CC=g++
+CC=g++ -g
 CFLAGS=-I$(IDIR)
 
 ODIR=obj

@@ -342,6 +342,8 @@ char serialib::writeBytes(const void *Buffer, const unsigned int NbBytes)
      \return -1 error while setting the Timeout
      \return -2 error while reading the byte
   */
+
+
 char serialib::readChar(char *pByte,unsigned int timeOut_ms)
 {
 #if defined (_WIN32) || defined(_WIN64)
@@ -350,7 +352,6 @@ char serialib::readChar(char *pByte,unsigned int timeOut_ms)
 
     // Set the TimeOut
     timeouts.ReadTotalTimeoutConstant=timeOut_ms;
-
     // Write the parameters, return -1 if an error occured
     if(!SetCommTimeouts(hSerial, &timeouts)) return -1;
 
