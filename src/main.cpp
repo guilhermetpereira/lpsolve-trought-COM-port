@@ -25,6 +25,7 @@
 
 #define TIME_COUNTER 1
 #define PRINT 0
+#define READ_AT_ONCE 1
 
 #if TIME_COUNTER
 #include <chrono>
@@ -59,7 +60,7 @@ typedef struct nodes_info_t
     uint8_t neighbors[50]; // size limited by hardware
 }nodes_info_t;
 serialib serial;
-vector<uint8_t> buffer;
+vector<uint8_t> buffer_vec;
 vector<nodes_info_t> nodes_info_vec;
 uint8_t assTimeSlot;
 /*
@@ -68,35 +69,36 @@ uint8_t assTimeSlot;
     2. new node info signal 'N'
     3. node_info_t
     4. finsh node info signal 'F'
-    5. back to 2 or end of buffer
+    5. back to 2 or end of buffer_vec
 */
 void process_data(void)
 {
     nodes_info_vec.clear();
-    assTimeSlot = (uint8_t)buffer.front() - 48;
-    buffer.erase(buffer.begin());
+    assTimeSlot = ((int)buffer_vec.front() > 96) ? (uint32_t)(((int)buffer_vec.front() - 87) << 0) : (uint32_t)(((int)buffer_vec.front() - 48) << 0);
+    //assTimeSlot = (uint8_t)buffer_vec.front() - 48;
+    buffer_vec.erase(buffer_vec.begin());
     nodes_info_t tmp_data;
-    for (;buffer.size() > 0;)
+    for (;buffer_vec.size() > 0;)
     {
-        std::vector<uint8_t>::iterator it = buffer.begin();
+        std::vector<uint8_t>::iterator it = buffer_vec.begin();
         if (*it == 'N')
         {
-            buffer.erase(buffer.begin());
-            std::vector<uint8_t>::iterator v = find(buffer.begin(),buffer.end(), 'N');
-            tmp_data.assigned_time_slot = buffer.front();
-            tmp_data.energy =   (uint32_t)(((int)buffer.at(1) - 48) << 4)  | (uint32_t)(((int)buffer.at(2) - 48) << 0) |
-                                (uint32_t)(((int)buffer.at(3) - 48) << 12) | (uint32_t)(((int)buffer.at(4) - 48) << 8) |
-                                (uint32_t)(((int)buffer.at(5) - 48) << 20) | (uint32_t)(((int)buffer.at(6) - 48) << 16)|
-                                (uint32_t)(((int)buffer.at(7) - 48) << 28) | (uint32_t)(((int)buffer.at(8) - 48) << 24);
+            buffer_vec.erase(buffer_vec.begin());
+            std::vector<uint8_t>::iterator v = find(buffer_vec.begin(),buffer_vec.end(), 'N');
+            tmp_data.assigned_time_slot = buffer_vec.front();
+            tmp_data.energy =   (uint32_t)(((int)buffer_vec.at(1) - 48) << 4)  | (uint32_t)(((int)buffer_vec.at(2) - 48) << 0) |
+                                (uint32_t)(((int)buffer_vec.at(3) - 48) << 12) | (uint32_t)(((int)buffer_vec.at(4) - 48) << 8) |
+                                (uint32_t)(((int)buffer_vec.at(5) - 48) << 20) | (uint32_t)(((int)buffer_vec.at(6) - 48) << 16)|
+                                (uint32_t)(((int)buffer_vec.at(7) - 48) << 28) | (uint32_t)(((int)buffer_vec.at(8) - 48) << 24);
             memset(tmp_data.neighbors, 0, sizeof(tmp_data.neighbors));
             int j = 0;
             for (uint8_t i = 0; i < (int)ceil(assTimeSlot/8.0); i++)
             {
-                tmp_data.neighbors[j++] =   ((int)buffer.at(9+i) > 96) ? (uint32_t)(((int)buffer.at(9+i) - 87) << 0) : (uint32_t)(((int)buffer.at(9+i) - 48) << 0) |
-                                            ((int)buffer.at(10+i) > 96 ) ? (uint32_t)(((int)buffer.at(10+i) - 87) << 4) : (uint32_t)(((int)buffer.at(10+i) - 48) << 4);
+                tmp_data.neighbors[j++] =   ((int)buffer_vec.at(9+i) > 96) ? (uint32_t)(((int)buffer_vec.at(9+i) - 87) << 0) : (uint32_t)(((int)buffer_vec.at(9+i) - 48) << 0) |
+                                            ((int)buffer_vec.at(10+i) > 96 ) ? (uint32_t)(((int)buffer_vec.at(10+i) - 87) << 4) : (uint32_t)(((int)buffer_vec.at(10+i) - 48) << 4);
             }
             nodes_info_vec.push_back(tmp_data);
-            buffer.erase(buffer.begin(), v);
+            buffer_vec.erase(buffer_vec.begin(), v);
         }
     }
 
@@ -127,12 +129,13 @@ int main( /*int argc, char *argv[]*/)
         switch(state)
         {
             case STATE_WAIT_COMMAND:
+            {
             if(serial.readChar(&signal)==1)
             {
-                /* Check if Received signal is node info */
                 #if PRINT
                 cout << "\nReceived Signal : " << signal << endl;
                 #endif
+                /* Check if Received signal is node info */
                 if(signal == 'S')
                 {
                     #if TIME_COUNTER
@@ -141,7 +144,8 @@ int main( /*int argc, char *argv[]*/)
                     state = STATE_RX_STORE;
                 }
                 else
-                    state = (buffer.size() >= 0) ? STATE_SOLVE_COOP : STATE_WAIT_COMMAND;
+                    /* If no relevant signal is registered, process current node info */
+                    state = (buffer_vec.size() >= 0) ? STATE_SOLVE_COOP : STATE_WAIT_COMMAND;
             }
             else
             {
@@ -151,28 +155,68 @@ int main( /*int argc, char *argv[]*/)
                 // todo : enviar sinal de erro pro pan ??
                 state = STATE_IDLE;
             }
+            }
             break;
             case STATE_RX_STORE:
+            {
 
-                /* Read COM until end of transmission */
                 int err;
+                #if READ_AT_ONCE
+                /* Read COM buffer at once */
+                serial.readChar(&signal);
+                assTimeSlot = (uint8_t)signal - 48;
+                cout << "assTimeSlot: " << (int)assTimeSlot << endl;
+
+                int node_info_size = sizeof(uint8_t);
+                unsigned int buffer_size = ((unsigned int)ceil(assTimeSlot/8.0)+sizeof(uint8_t)+sizeof(int)*2+2)*assTimeSlot+1; 
+                cout << "buffer size: " << buffer_size << endl;
+                uint8_t *buffer = new uint8_t[buffer_size];
+                serial.readBytes(buffer, buffer_size, 0,0);
+                // for (int i = 0; i < buffer_size; ++i)
+                // {
+                //     cout << " " << buffer[i];
+                // }
+                // cout << endl;
+                #else
+                /* Read COM until end of transmission */
                 for (;((err = serial.readChar(&signal)) == 1) && signal != 'T';)
                 {
-                    buffer.push_back(signal);
+                    buffer_vec.push_back(signal);
                 }
-                buffer.push_back(signal);
+                buffer_vec.push_back(signal);
+                #endif
 
                 #if PRINT
-                for (vector<uint8_t>::const_iterator i = buffer.begin(); i != buffer.end(); ++i)
+                for (vector<uint8_t>::const_iterator i = buffer_vec.begin(); i != buffer_vec.end(); ++i)
                          std::cout << *i << ' ';
                 cout << endl;
                 #endif
 
-                /* check if there is new transmission on COM buffer */
-                state = ( serial.available() > 0 ) ? STATE_WAIT_COMMAND : STATE_SOLVE_COOP;
-            break;
-            case STATE_SOLVE_COOP:
+                /* check if there is new transmission on COM buffer to guarantee att data */
+                // state = ( serial.available() > 0 ) ? STATE_WAIT_COMMAND : STATE_SOLVE_COOP;
+                // state = STATE_SOLVE_COOP;
 
+                #if TIME_COUNTER
+                end = std::chrono::steady_clock::now();
+                cout << "Elapsed time (before process)  = " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << " [miliseconds]" << endl;
+                #endif
+
+
+                // process_data();
+
+                // #if TIME_COUNTER
+                // end = std::chrono::steady_clock::now();
+                // cout << "Elapsed time (after process)  = " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << " [miliseconds]" << endl;
+                // #endif
+
+                Sleep(1000);
+                state = STATE_IDLE;
+
+
+            }
+            break;    
+            case STATE_SOLVE_COOP:
+            {
             #if PRINT
             cout << "Solve COOP" << endl;
             #endif
@@ -181,17 +225,18 @@ int main( /*int argc, char *argv[]*/)
             cout << "Elapsed time (before process) = " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << " [miliseconds]" << endl;
             #endif
             process_data();
-            /* Processe data */
-            // cout << (int)assTimeSlot << endl;
-            // for (vector<nodes_info_t>::const_iterator i = nodes_info_vec.begin(); i != nodes_info_vec.end(); ++i)
-            // {
-            //     cout << "\nNode's tTS = " << i->assigned_time_slot << "\nenergy = " << i->energy << "\nBitmap: " <<endl;
-            //     for (int j = 0; j < assTimeSlot; ++j)
-            //     {
-            //        cout << (int)i->neighbors[j] << " " ;
-            //     }
-            // }
-
+            /* Processed data */
+            #if PRINT
+            cout << (int)assTimeSlot << endl;
+            for (vector<nodes_info_t>::const_iterator i = nodes_info_vec.begin(); i != nodes_info_vec.end(); ++i)
+            {
+                cout << "\nNode's tTS = " << i->assigned_time_slot << "\nenergy = " << i->energy << "\nBitmap: " <<endl;
+                for (int j = 0; j < assTimeSlot; ++j)
+                {
+                   cout << (int)i->neighbors[j] << " " ;
+                }
+            }
+            #endif
             #if TIME_COUNTER
             end = std::chrono::steady_clock::now();
             cout << "Elapsed time (after process)  = " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << " [miliseconds]" << endl;
@@ -199,6 +244,7 @@ int main( /*int argc, char *argv[]*/)
 
             Sleep(1000);
             state = STATE_WAIT_COMMAND;
+            }
             break;
             case STATE_IDLE:
             break;
