@@ -21,6 +21,16 @@
 #include <iostream>
 #include <algorithm>
 #include <string.h>
+#include <math.h>
+
+#define TIME_COUNTER 1
+#define PRINT 0
+
+#if TIME_COUNTER
+#include <chrono>
+#endif
+
+
 
 #if defined (_WIN32) || defined(_WIN64)
     #define SERIAL_PORT "COM9"
@@ -31,6 +41,8 @@
 
 
 using namespace std;
+
+
 
 
 typedef enum {
@@ -78,13 +90,10 @@ void process_data(void)
                                 (uint32_t)(((int)buffer.at(7) - 48) << 28) | (uint32_t)(((int)buffer.at(8) - 48) << 24);
             memset(tmp_data.neighbors, 0, sizeof(tmp_data.neighbors));
             int j = 0;
-            for (uint8_t i = 0; i < (int)assTimeSlot; i++)
+            for (uint8_t i = 0; i < (int)ceil(assTimeSlot/8.0); i++)
             {
                 tmp_data.neighbors[j++] =   ((int)buffer.at(9+i) > 96) ? (uint32_t)(((int)buffer.at(9+i) - 87) << 0) : (uint32_t)(((int)buffer.at(9+i) - 48) << 0) |
                                             ((int)buffer.at(10+i) > 96 ) ? (uint32_t)(((int)buffer.at(10+i) - 87) << 4) : (uint32_t)(((int)buffer.at(10+i) - 48) << 4);
-                // cout <<  (((int)buffer.at(9+i) > 96) ? (uint32_t)(((int)buffer.at(9+i) - 87) << 4) : (uint32_t)(((int)buffer.at(9+i) - 48) <<4))<< endl;
-                // cout <<  (((int)buffer.at(10+i) > 96) ? (uint32_t)(((int)buffer.at(10+i) - 87) << 4) : (uint32_t)(((int)buffer.at(10+i) - 48) <<4))<< endl;
-
             }
             nodes_info_vec.push_back(tmp_data);
             buffer.erase(buffer.begin(), v);
@@ -99,6 +108,11 @@ int main( /*int argc, char *argv[]*/)
     AppState_t state = STATE_WAIT_COMMAND;
     char signal = 0;
 
+    #if TIME_COUNTER
+    chrono::steady_clock sc;
+    chrono::steady_clock::time_point begin, end;
+    #endif
+
     // Connection to serial port
     char errorOpening = serial.openDevice(SERIAL_PORT, 115200);
     
@@ -107,7 +121,7 @@ int main( /*int argc, char *argv[]*/)
     printf ("Successful connection to %s\n",SERIAL_PORT);
     
     serial.flushReceiver();
-
+    system("cls");
     for (;;)
     {
         switch(state)
@@ -116,20 +130,30 @@ int main( /*int argc, char *argv[]*/)
             if(serial.readChar(&signal)==1)
             {
                 /* Check if Received signal is node info */
-                printf("Received Signal : %c\n", signal);
+                #if PRINT
+                cout << "\nReceived Signal : " << signal << endl;
+                #endif
                 if(signal == 'S')
+                {
+                    #if TIME_COUNTER
+                    begin = std::chrono::steady_clock::now();
+                    #endif
                     state = STATE_RX_STORE;
+                }
                 else
                     state = (buffer.size() >= 0) ? STATE_SOLVE_COOP : STATE_WAIT_COMMAND;
             }
             else
             {
-                printf("No Signal received\n");
+                #if PRINT
+                cout << "No Signal received" << endl;
+                #endif
                 // todo : enviar sinal de erro pro pan ??
                 state = STATE_IDLE;
             }
             break;
             case STATE_RX_STORE:
+
                 /* Read COM until end of transmission */
                 int err;
                 for (;((err = serial.readChar(&signal)) == 1) && signal != 'T';)
@@ -137,27 +161,45 @@ int main( /*int argc, char *argv[]*/)
                     buffer.push_back(signal);
                 }
                 buffer.push_back(signal);
+
+                #if PRINT
                 for (vector<uint8_t>::const_iterator i = buffer.begin(); i != buffer.end(); ++i)
                          std::cout << *i << ' ';
                 cout << endl;
+                #endif
+
                 /* check if there is new transmission on COM buffer */
                 state = ( serial.available() > 0 ) ? STATE_WAIT_COMMAND : STATE_SOLVE_COOP;
             break;
             case STATE_SOLVE_COOP:
-            printf("Solve COOP\n");
+
+            #if PRINT
+            cout << "Solve COOP" << endl;
+            #endif
+            #if TIME_COUNTER
+            end = std::chrono::steady_clock::now();
+            cout << "Elapsed time (before process) = " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << " [miliseconds]" << endl;
+            #endif
             process_data();
-            cout << (int)assTimeSlot << endl;
-            for (vector<nodes_info_t>::const_iterator i = nodes_info_vec.begin(); i != nodes_info_vec.end(); ++i)
-            {
-                cout << "\nNode's tTS = " << i->assigned_time_slot << "\nenergy = " << i->energy << "\nBitmap: " <<endl;
-                for (int j = 0; j < assTimeSlot; ++j)
-                {
-                   cout << (int)i->neighbors[j] << " " ;
-                }
-            }
+            /* Processe data */
+            // cout << (int)assTimeSlot << endl;
+            // for (vector<nodes_info_t>::const_iterator i = nodes_info_vec.begin(); i != nodes_info_vec.end(); ++i)
+            // {
+            //     cout << "\nNode's tTS = " << i->assigned_time_slot << "\nenergy = " << i->energy << "\nBitmap: " <<endl;
+            //     for (int j = 0; j < assTimeSlot; ++j)
+            //     {
+            //        cout << (int)i->neighbors[j] << " " ;
+            //     }
+            // }
+
+            #if TIME_COUNTER
+            end = std::chrono::steady_clock::now();
+            cout << "Elapsed time (after process)  = " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << " [miliseconds]" << endl;
+            #endif
 
             Sleep(1000);
             state = STATE_WAIT_COMMAND;
+            break;
             case STATE_IDLE:
             break;
         }
