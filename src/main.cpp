@@ -37,6 +37,7 @@
 #endif
 #ifdef __linux__
     #define SERIAL_PORT "/dev/ttyACM0"
+    #define TIME_COUNTER 0
 #endif
 
 
