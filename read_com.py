@@ -55,7 +55,7 @@ def process_data():
 				value = int(''.join(buffer.pop(0).decode('utf-8')),16)
 				for bit in range(7):
 					if (bool((0x01 << bit) & value)): 
-						bitmap.append(bit)
+						bitmap.append(byte + bit)
 			nodes_list.append(Node(assigned_ts,energy_int,bitmap))
 	buffer.clear()
 
