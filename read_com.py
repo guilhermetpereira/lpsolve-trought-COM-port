@@ -2,6 +2,7 @@ import serial
 import time 
 import lpsolve55
 import os
+import numpy as np
 from dataclasses import dataclass
 
 
@@ -18,7 +19,7 @@ nodes_list = []
 class Node:
 	assigned_ts : int
 	energy : int
-	bitmap :[]
+	bitmap : []
 
 
 def wait_command():
@@ -57,7 +58,7 @@ def process_data():
 	while len(buffer) != 0  and buffer[0] != b'T':
 		if buffer[0] == b'N':
 			buffer.pop(0)
-			assigned_ts = int(''.join(buffer.pop(0).decode('utf-8')),16)
+			assigned_ts = int(''.join(buffer.pop(0).decode('utf-8')),16)+1
 
 			energy_str = [x.decode('utf-8') for x in buffer[0:8]]
 			energy_int = int(''.join(energy_str),16)
@@ -67,11 +68,25 @@ def process_data():
 				value = int(''.join(buffer.pop(0).decode('utf-8')),16)
 				for bit in range(7):
 					if (bool((0x01 << bit) & value)): 
-						bitmap.append(byte + bit)
+						bitmap.append(byte + bit + 1)
 			nodes_list.append(Node(assigned_ts,energy_int,bitmap))
 	buffer.clear()
 
-
+def build_matrix():
+	global adjacent_matrix 
+	adjacent_matrix = np.empty([total_nodes, total_nodes]).astype(int)
+	row_index = 1
+	for row_index in range(len(adjacent_matrix)):
+		node = None
+		for it_node in nodes_list:
+			if it_node.assigned_ts == row_index + 1:
+				node = it_node
+				break
+		for neig in node.bitmap:
+			adjacent_matrix[row_index][neig-1] = neig
+	if ENABLE_PRINT:
+		print(adjacent_matrix)
+		
 
 if __name__ == "__main__":
 	ser = serial.Serial(COM_PORT, BAUD_RATE)
@@ -93,8 +108,11 @@ if __name__ == "__main__":
 				read_serial()
 				process_data()
 				if ENABLE_PRINT:
-					print("--- %s seconds ---" % (time.time() - start_time))
-					print(nodes_list)	
+					# print(nodes_list)	
+					pass
+				build_matrix()
+				print("--- %s seconds ---" % (time.time() - start_time))
+
 				state = 'STATE_WAIT_COMMAND'
 				# state = 'STATE_RX_STORE'
 			else:
