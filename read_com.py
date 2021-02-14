@@ -1,6 +1,6 @@
 import serial
 import time 
-import lpsolve55
+from lpsolve55 import lpsolve
 import os
 import numpy as np
 from dataclasses import dataclass
@@ -132,6 +132,15 @@ def build_lpsolve_file():
 		file.write(var+'\n')
 	file.close()
 
+def solve_lpsolve():
+	lp = lpsolve('read_LP', 'prob1.mod')
+	lpsolve('set_verbose', lp, 3)
+	lpsolve('solve', lp)
+	if lpsolve('get_variables',lp)[1] == 1:
+		coop_nodes = lpsolve('get_variables',lp)[0] 
+	if ENABLE_PRINT:
+		print(coop_nodes if lpsolve('get_variables',lp)[1] == 1 else 'error')
+
 if __name__ == "__main__":
 	ser = serial.Serial(COM_PORT, BAUD_RATE)
 
@@ -156,6 +165,7 @@ if __name__ == "__main__":
 					pass
 				build_matrix()
 				build_lpsolve_file()
+				solve_lpsolve()
 				print("--- %s seconds ---" % (time.time() - start_time))
 
 				state = 'STATE_WAIT_COMMAND'
