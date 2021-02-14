@@ -121,7 +121,17 @@ def build_lpsolve_file():
 		print(connected_coord_nodes)
 		print(notconnected_coord_nodes)
 		print(bin_var)
-		
+
+	file = open('prob1.mod','w')
+	file.write(min_str+'\n')
+	for connected in connected_coord_nodes:
+		file.write(connected+'\n')
+	for notconnected in notconnected_coord_nodes:
+		file.write(notconnected+'\n')
+	for var in bin_var:
+		file.write(var+'\n')
+	file.close()
+
 if __name__ == "__main__":
 	ser = serial.Serial(COM_PORT, BAUD_RATE)
 

@@ -5,3 +5,8 @@ src/main.o
 *.exe
 src/main.o
 src/main.exe
+teste.py
+prob0.mod
+lp_solve_log
+prob1.mod
+__pycache__/config.cpython-38.pyc
