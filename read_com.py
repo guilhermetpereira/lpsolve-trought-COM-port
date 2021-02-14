@@ -91,6 +91,8 @@ def build_matrix():
 		pass
 	
 def build_lpsolve_file():
+	global bin_nodes
+	bin_nodes = []
 	min_str = 'min:'
 	connected_coord_nodes = []
 	notconnected_coord_nodes = []
@@ -100,9 +102,11 @@ def build_lpsolve_file():
 			min_str+='%6f'%(ENERGY_CONST/(node.energy/10.0))+'*x'+str(node.assigned_ts)+'+'
 			neighbors = 'ConectCoordX'+str(node.assigned_ts)+':'
 			for neig in node.bitmap:
-				neighbors+='x'+str(neig)+'+'
+				if( nodes_list[neig-1].energy > 0):
+					neighbors+='x'+str(neig)+'+'
 			neighbors = neighbors[:-1] + '>=1;'
 			connected_coord_nodes.append(neighbors)
+			bin_nodes.append(node.assigned_ts)
 			bin_var.append('bin x'+str(node.assigned_ts)+';')
 		else:
 			neighbors ='NotConetCoordX'+str(node.assigned_ts)+':'
@@ -136,11 +140,23 @@ def solve_lpsolve():
 	lp = lpsolve('read_LP', 'prob1.mod')
 	lpsolve('set_verbose', lp, 3)
 	lpsolve('solve', lp)
+	global coop_nodes
+	coop_nodes = []
 	if lpsolve('get_variables',lp)[1] == 1:
 		coop_nodes = lpsolve('get_variables',lp)[0] 
 	if ENABLE_PRINT:
 		print(coop_nodes if lpsolve('get_variables',lp)[1] == 1 else 'error')
 
+def build_n_send_bitmap():
+	global bitmap_arr
+	bitmap_arr = np.zeros((-(total_nodes // -8)),dtype=int)
+	bitmap = 0x00
+	for idx, val in enumerate(coop_nodes):
+		if(int(val) == 1):
+			bitmap_arr[-(total_nodes // -8) - 1] |= 1 << (bin_nodes[idx]-1)
+	
+	if ENABLE_PRINT:
+		print(bitmap_arr)
 if __name__ == "__main__":
 	ser = serial.Serial(COM_PORT, BAUD_RATE)
 
@@ -166,6 +182,7 @@ if __name__ == "__main__":
 				build_matrix()
 				build_lpsolve_file()
 				solve_lpsolve()
+				build_n_send_bitmap()
 				print("--- %s seconds ---" % (time.time() - start_time))
 
 				state = 'STATE_WAIT_COMMAND'
