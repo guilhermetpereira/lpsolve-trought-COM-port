@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from config import ENABLE_PRINT
 from config import COM_PORT
 from config import BAUD_RATE
+from config import ENERGY_CONST
 
 state = 'STATE_IDLE'
 buffer = []
@@ -74,7 +75,7 @@ def process_data():
 
 def build_matrix():
 	global adjacent_matrix 
-	adjacent_matrix = np.empty([total_nodes, total_nodes]).astype(int)
+	adjacent_matrix = np.zeros((total_nodes, total_nodes),dtype=int)
 	row_index = 1
 	for row_index in range(len(adjacent_matrix)):
 		node = None
@@ -82,12 +83,45 @@ def build_matrix():
 			if it_node.assigned_ts == row_index + 1:
 				node = it_node
 				break
-		for neig in node.bitmap:
-			adjacent_matrix[row_index][neig-1] = neig
+		if len(node.bitmap) > 0:
+			for neig in node.bitmap:
+				adjacent_matrix[row_index][neig-1] = int(neig) if int(neig)>0 else int(0)
 	if ENABLE_PRINT:
 		print(adjacent_matrix)
-		
+		pass
+	
+def build_lpsolve_file():
+	min_str = 'min:'
+	connected_coord_nodes = []
+	notconnected_coord_nodes = []
+	bin_var = []
+	for node in nodes_list:
+		if node.energy != 0:
+			min_str+='%6f'%(ENERGY_CONST/(node.energy/10.0))+'*x'+str(node.assigned_ts)+'+'
+			neighbors = 'ConectCoordX'+str(node.assigned_ts)+':'
+			for neig in node.bitmap:
+				neighbors+='x'+str(neig)+'+'
+			neighbors = neighbors[:-1] + '>=1;'
+			connected_coord_nodes.append(neighbors)
+			bin_var.append('bin x'+str(node.assigned_ts)+';')
+		else:
+			neighbors ='NotConetCoordX'+str(node.assigned_ts)+':'
+			empty = len(neighbors)
+			i = 1
+			for neig in adjacent_matrix[:,(node.assigned_ts-1)]:
+				neighbors += ('x'+ str(i) +'+') if neig > 0 else ''
+				i+=1
+			if(len(neighbors) > empty):
+				neighbors = neighbors[:-1] + '>=1;'
+				notconnected_coord_nodes.append(neighbors)
 
+	min_str = min_str[:-1] + ';'
+	if ENABLE_PRINT:
+		print(min_str)
+		print(connected_coord_nodes)
+		print(notconnected_coord_nodes)
+		print(bin_var)
+		
 if __name__ == "__main__":
 	ser = serial.Serial(COM_PORT, BAUD_RATE)
 
@@ -108,9 +142,10 @@ if __name__ == "__main__":
 				read_serial()
 				process_data()
 				if ENABLE_PRINT:
-					# print(nodes_list)	
+					print(nodes_list)	
 					pass
 				build_matrix()
+				build_lpsolve_file()
 				print("--- %s seconds ---" % (time.time() - start_time))
 
 				state = 'STATE_WAIT_COMMAND'
